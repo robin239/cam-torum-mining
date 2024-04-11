@@ -2,5 +2,4 @@
 
 Highlights water streams in Cam Torum mine
 
-https://github.com/cwjoshuak/razor-backed-kebbits/assets/15935660/7dfcbcaa-10f8-4671-8c63-16ea286e5942
-
+https://github.com/cwjoshuak/cam-torum-mining/assets/15935660/51c2d8cb-e672-4e08-b66b-122024b3be18
