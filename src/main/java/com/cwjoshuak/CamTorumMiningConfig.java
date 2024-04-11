@@ -48,6 +48,16 @@ public interface CamTorumMiningConfig extends Config
 
 	@ConfigItem(
 		position = 4,
+		keyName = "notifyWater",
+		name = "Notify Water Spawn",
+		description = "Notifies you when watery rocks spawn"
+	)
+	default boolean notifyWater() {
+		return true;
+	}
+
+	@ConfigItem(
+		position = 5,
 		keyName = "dynamicMenuEntrySwap",
 		name = "Dynamically swap depleted rock menu entries",
 		description = "Swap menu entries to only make calcified rocks clickable."

@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.*;
+import net.runelite.client.Notifier;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
@@ -17,9 +18,7 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
 
-import java.time.Instant;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -53,6 +52,9 @@ public class CamTorumMiningPlugin extends Plugin
 	@Getter
 	private final Map<WorldPoint, TileObject> rocks = new HashMap<>();
 
+	@Inject
+	private Notifier notifier;
+
 	private static final Set<Integer> ROCK_OBJECT_IDS = ImmutableSet.of(
 		ObjectID.ROCKS_51486,
 		ObjectID.ROCKS_51488,
@@ -61,6 +63,7 @@ public class CamTorumMiningPlugin extends Plugin
 	);
 	private boolean inCamTorumMiningArea;
 
+	private int lastNotificationTick;
 
 	@Override
 	protected void startUp() throws Exception
@@ -95,6 +98,7 @@ public class CamTorumMiningPlugin extends Plugin
 				streams.clear();
 				rocks.clear();
 				inCamTorumMiningArea = client.getLocalPlayer().getWorldLocation().getRegionID() == CAM_TORUM_REGION;
+				lastNotificationTick = -100; // negative value so instant logging in on water will still notify
 		}
 	}
 
@@ -141,6 +145,51 @@ public class CamTorumMiningPlugin extends Plugin
 		{
 			rocks.put(newObject.getWorldLocation(), newObject);
 			return;
+		}
+	}
+
+	@Subscribe
+	public void onGameTick(GameTick event)
+	{
+		if (!inCamTorumMiningArea || streams.isEmpty() || !config.notifyWater())
+		{
+			return;
+		}
+
+		int ticksSinceNotif = client.getTickCount() - lastNotificationTick;
+		if (ticksSinceNotif < 52)
+		{ // streams last for about 45 or 50 game ticks
+			return; // already notifier for current set
+		}
+
+		lastNotificationTick = client.getTickCount();
+
+		boolean alreadyMiningStream = false;
+		WorldPoint wp = client.getLocalPlayer().getWorldLocation();
+		for (Map.Entry<TileObject, Tile> entry : streams.entrySet())
+		{
+			Tile tile = entry.getValue();
+			if (tile.getWorldLocation().distanceTo(client.getLocalPlayer().getWorldLocation()) >= config.maxDistance())
+			{
+				continue;
+			}
+
+			int dist = Math.abs(wp.getX() - tile.getWorldLocation().getX()) + Math.abs(wp.getY() - tile.getWorldLocation().getY());
+			if (dist != 1)
+			{ // manhattan distance of 1 is adjacent and not diagonal to a stream-the tile to be able to mine it
+				continue;
+			}
+
+			if (client.getLocalPlayer().getAnimation() >= 0)
+			{ // Assuming they are performing a mining animation if it isn't -1
+				alreadyMiningStream = true;
+				break;
+			}
+		}
+
+		if (!alreadyMiningStream)
+		{
+			notifier.notify("Watery rocks spawned");
 		}
 	}
 
