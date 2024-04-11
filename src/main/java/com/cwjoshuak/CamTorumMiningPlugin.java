@@ -123,8 +123,10 @@ public class CamTorumMiningPlugin extends Plugin
 
 	private void onTileObject(Tile tile, TileObject oldObject, TileObject newObject)
 	{
-		streams.remove(oldObject);
-		rocks.remove(oldObject);
+		if (oldObject != null) {
+			streams.remove(oldObject);
+			rocks.remove(oldObject.getWorldLocation());
+		}
 
 		if (newObject == null || !isInCamTorumMiningArea())
 		{
