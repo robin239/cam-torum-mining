@@ -189,7 +189,7 @@ public class CamTorumMiningPlugin extends Plugin
 
 		if (!alreadyMiningStream)
 		{
-			notifier.notify("Watery rocks spawned");
+			notifier.notify("Watery rocks spawned!");
 		}
 	}
 
