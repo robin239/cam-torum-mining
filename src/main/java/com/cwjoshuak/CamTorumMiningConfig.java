@@ -4,7 +4,6 @@ import net.runelite.client.config.Alpha;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
-import net.runelite.client.util.ColorUtil;
 
 import java.awt.*;
 
@@ -52,7 +51,8 @@ public interface CamTorumMiningConfig extends Config
 		name = "Notify Water Spawn",
 		description = "Notifies you when watery rocks spawn"
 	)
-	default boolean notifyWater() {
+	default boolean notifyWater()
+	{
 		return true;
 	}
 
@@ -62,7 +62,19 @@ public interface CamTorumMiningConfig extends Config
 		name = "Dynamically swap depleted rock menu entries",
 		description = "Swap menu entries to only make calcified rocks clickable."
 	)
-	default boolean dynamicMenuEntrySwap() {
+	default boolean dynamicMenuEntrySwap()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+			position = 6,
+			keyName = "showVeins",
+			name = "Show calcified mining spots",
+			description = "Configures whether or not the calcified mining spots are displayed."
+	)
+	default boolean showVeins()
+	{
 		return true;
 	}
 }

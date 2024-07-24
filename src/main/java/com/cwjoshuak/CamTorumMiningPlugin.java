@@ -1,6 +1,5 @@
 package com.cwjoshuak;
 
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Provides;
 import javax.inject.Inject;
@@ -19,6 +18,7 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -32,8 +32,10 @@ import java.util.Set;
 public class CamTorumMiningPlugin extends Plugin
 {
 	private static final int CAM_TORUM_REGION = 6037;
+
 	@Inject
 	private Client client;
+
 	@Inject
 	private ClientThread clientThread;
 
@@ -46,14 +48,17 @@ public class CamTorumMiningPlugin extends Plugin
 	@Inject
 	private CamTorumMiningOverlay overlay;
 
+	@Inject
+	private Notifier notifier;
+
 	@Getter
-	private final Map<TileObject, Tile> streams = new HashMap<>();
+	private final Set<TileObject> veins = new HashSet<>();
+
+	@Getter
+	private final Set<TileObject> streams = new HashSet<>();
 
 	@Getter
 	private final Map<WorldPoint, TileObject> rocks = new HashMap<>();
-
-	@Inject
-	private Notifier notifier;
 
 	private static final Set<Integer> ROCK_OBJECT_IDS = ImmutableSet.of(
 		ObjectID.ROCKS_51486,
@@ -61,6 +66,16 @@ public class CamTorumMiningPlugin extends Plugin
 		ObjectID.ROCKS_51490,
 		ObjectID.ROCKS_51492
 	);
+
+	private static final Set<Integer> VEIN_OBJECT_IDS = ImmutableSet.of(
+		ObjectID.CALCIFIED_ROCKS,
+		ObjectID.CALCIFIED_ROCKS_51487,
+		ObjectID.CALCIFIED_ROCKS_51489,
+		ObjectID.CALCIFIED_ROCKS_51491
+	);
+
+	private static final int STREAM_OBJECT_ID = 51493;
+
 	private boolean inCamTorumMiningArea;
 
 	private int lastNotificationTick;
@@ -70,7 +85,8 @@ public class CamTorumMiningPlugin extends Plugin
 	{
 		overlayManager.add(overlay);
 
-		if (client.getGameState() == GameState.LOGGED_IN) {
+		if (client.getGameState() == GameState.LOGGED_IN)
+		{
 			clientThread.invokeLater(() ->
 			{
 				inCamTorumMiningArea = client.getLocalPlayer().getWorldLocation().getRegionID() == CAM_TORUM_REGION;
@@ -83,6 +99,7 @@ public class CamTorumMiningPlugin extends Plugin
 	{
 		overlayManager.remove(overlay);
 		streams.clear();
+		veins.clear();
 		rocks.clear();
 		inCamTorumMiningArea = false;
 	}
@@ -95,40 +112,47 @@ public class CamTorumMiningPlugin extends Plugin
 			case LOADING:
 			case LOGIN_SCREEN:
 			case HOPPING:
+			{
 				streams.clear();
+				veins.clear();
 				rocks.clear();
 				inCamTorumMiningArea = client.getLocalPlayer().getWorldLocation().getRegionID() == CAM_TORUM_REGION;
 				lastNotificationTick = -100; // negative value so instant logging in on water will still notify
+				break;
+			}
 		}
 	}
 
 	@Subscribe
 	public void onDecorativeObjectSpawned(DecorativeObjectSpawned event)
 	{
-		onTileObject(event.getTile(), null, event.getDecorativeObject());
+		onTileObject(null, event.getDecorativeObject());
 	}
 
 	@Subscribe
 	public void onDecorativeObjectDespawned(DecorativeObjectDespawned event)
 	{
-		onTileObject(event.getTile(), event.getDecorativeObject(), null);
+		onTileObject(event.getDecorativeObject(), null);
 	}
 
 	@Subscribe
-	public void onGameObjectSpawned(GameObjectSpawned event) {
-		onTileObject(event.getTile(), null, event.getGameObject());
-	}
-
-	@Subscribe
-	public void onGameObjectDespawned(GameObjectDespawned event) {
-		onTileObject(event.getTile(), event.getGameObject(), null);
-	}
-
-
-	private void onTileObject(Tile tile, TileObject oldObject, TileObject newObject)
+	public void onGameObjectSpawned(GameObjectSpawned event)
 	{
-		if (oldObject != null) {
+		onTileObject(null, event.getGameObject());
+	}
+
+	@Subscribe
+	public void onGameObjectDespawned(GameObjectDespawned event)
+	{
+		onTileObject(event.getGameObject(), null);
+	}
+
+	private void onTileObject(TileObject oldObject, TileObject newObject)
+	{
+		if (oldObject != null)
+		{
 			streams.remove(oldObject);
+			veins.remove(oldObject);
 			rocks.remove(oldObject.getWorldLocation());
 		}
 
@@ -136,15 +160,21 @@ public class CamTorumMiningPlugin extends Plugin
 		{
 			return;
 		}
-		if (newObject.getId() == 51493)
+
+		int objectId = newObject.getId();
+		if (VEIN_OBJECT_IDS.contains(objectId))
 		{
-			streams.put(newObject, tile);
-			return;
+			// Add the object to the vein, this will also include streams
+			veins.add(newObject);
 		}
-		if (ROCK_OBJECT_IDS.contains(newObject.getId()))
+
+		if (objectId == STREAM_OBJECT_ID)
+		{
+			streams.add(newObject);
+		}
+		else if (ROCK_OBJECT_IDS.contains(objectId))
 		{
 			rocks.put(newObject.getWorldLocation(), newObject);
-			return;
 		}
 	}
 
@@ -156,32 +186,35 @@ public class CamTorumMiningPlugin extends Plugin
 			return;
 		}
 
-		int ticksSinceNotif = client.getTickCount() - lastNotificationTick;
-		if (ticksSinceNotif < 52)
-		{ // streams last for about 45 or 50 game ticks
-			return; // already notifier for current set
+		if (isPlayerMiningNotifiedRock())
+		{
+			// Already notifier for current set
+			return;
 		}
 
-		lastNotificationTick = client.getTickCount();
-
 		boolean alreadyMiningStream = false;
-		WorldPoint wp = client.getLocalPlayer().getWorldLocation();
-		for (Map.Entry<TileObject, Tile> entry : streams.entrySet())
+		Player player = client.getLocalPlayer();
+		WorldPoint playerLocation = player.getWorldLocation();
+
+		for (TileObject stream : streams)
 		{
-			Tile tile = entry.getValue();
-			if (tile.getWorldLocation().distanceTo(client.getLocalPlayer().getWorldLocation()) >= config.maxDistance())
+			WorldPoint location = stream.getWorldLocation();
+			if (playerLocation.distanceTo(location) >= config.maxDistance())
 			{
+				// Stream is outside the requested distance, do not render.
 				continue;
 			}
 
-			int dist = Math.abs(wp.getX() - tile.getWorldLocation().getX()) + Math.abs(wp.getY() - tile.getWorldLocation().getY());
-			if (dist != 1)
-			{ // manhattan distance of 1 is adjacent and not diagonal to a stream-the tile to be able to mine it
+			int distance = Math.abs(playerLocation.getX() - location.getX()) + Math.abs(playerLocation.getY() - location.getY());
+			if (distance != 1)
+			{
+				// Manhattan distance of 1 is adjacent and not diagonal to a stream-the tile to be able to mine it
 				continue;
 			}
 
-			if (client.getLocalPlayer().getAnimation() >= 0)
-			{ // Assuming they are performing a mining animation if it isn't -1
+			if (player.getAnimation() >= 0)
+			{
+				// Assuming they are performing a mining animation if it isn't -1
 				alreadyMiningStream = true;
 				break;
 			}
@@ -193,27 +226,49 @@ public class CamTorumMiningPlugin extends Plugin
 		}
 	}
 
-	@Subscribe
-	public void onMenuEntryAdded(MenuEntryAdded event) {
-		if (!isInCamTorumMiningArea()) {
-			return;
+	private boolean isPlayerMiningNotifiedRock()
+	{
+		int ticksSinceNotified = client.getTickCount() - lastNotificationTick;
+		if (ticksSinceNotified < 52)
+		{
+			// Streams last for about 45 or 50 game ticks
+			return true;
 		}
 
-		if (config.dynamicMenuEntrySwap()) {
+		lastNotificationTick = client.getTickCount();
+		return false;
+	}
+
+	@Subscribe
+	public void onMenuEntryAdded(MenuEntryAdded event)
+	{
+		if (config.dynamicMenuEntrySwap())
+		{
 			swapRockMenuEntries(event);
 		}
 	}
 
-	private void swapRockMenuEntries(MenuEntryAdded event) {
-		String target = event.getTarget();
-		if (target.contains("Rocks")) {
-			MenuEntry entry = event.getMenuEntry();
-			WorldPoint entryTargetPoint = WorldPoint.fromScene(client, entry.getParam0(), entry.getParam1(), client.getPlane());
-			if (rocks.get(entryTargetPoint) != null) {
-				entry.setDeprioritized(true);
-			}
+	private void swapRockMenuEntries(MenuEntryAdded event)
+	{
+		if (!isInCamTorumMiningArea())
+		{
+			return;
 		}
-	}
+
+		String target = event.getTarget();
+        if (!target.contains("Rocks"))
+		{
+            return;
+        }
+
+        MenuEntry entry = event.getMenuEntry();
+        WorldPoint entryTargetPoint = WorldPoint.fromScene(client, entry.getParam0(), entry.getParam1(), client.getPlane());
+
+        if (rocks.get(entryTargetPoint) != null)
+        {
+            entry.setDeprioritized(true);
+        }
+    }
 
 	@Provides
 	CamTorumMiningConfig provideConfig(ConfigManager configManager)
