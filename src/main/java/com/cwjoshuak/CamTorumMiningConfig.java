@@ -68,10 +68,10 @@ public interface CamTorumMiningConfig extends Config
 	}
 
 	@ConfigItem(
-			position = 6,
-			keyName = "showVeins",
-			name = "Show calcified mining spots",
-			description = "Configures whether or not the calcified mining spots are displayed."
+		position = 6,
+		keyName = "showVeins",
+		name = "Show calcified mining spots",
+		description = "Configures whether or not the calcified mining spots are displayed."
 	)
 	default boolean showVeins()
 	{

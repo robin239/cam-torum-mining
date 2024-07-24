@@ -192,7 +192,14 @@ public class CamTorumMiningPlugin extends Plugin
 			return;
 		}
 
-		boolean alreadyMiningStream = false;
+		if (!isAlreadyMiningStream())
+		{
+			notifier.notify("Watery rocks spawned!");
+		}
+	}
+
+	private boolean isAlreadyMiningStream()
+	{
 		Player player = client.getLocalPlayer();
 		WorldPoint playerLocation = player.getWorldLocation();
 
@@ -215,15 +222,10 @@ public class CamTorumMiningPlugin extends Plugin
 			if (player.getAnimation() >= 0)
 			{
 				// Assuming they are performing a mining animation if it isn't -1
-				alreadyMiningStream = true;
-				break;
+				return true;
 			}
 		}
-
-		if (!alreadyMiningStream)
-		{
-			notifier.notify("Watery rocks spawned!");
-		}
+		return false;
 	}
 
 	private boolean isPlayerMiningNotifiedRock()
