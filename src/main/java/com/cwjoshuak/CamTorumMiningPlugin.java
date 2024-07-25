@@ -10,7 +10,6 @@ import net.runelite.api.*;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.*;
 import net.runelite.client.Notifier;
-import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
@@ -33,11 +32,26 @@ public class CamTorumMiningPlugin extends Plugin
 {
 	private static final int CAM_TORUM_REGION = 6037;
 
-	@Inject
-	private Client client;
+	private static final int STREAM_DURATION_TICKS = 52;
+
+	private static final int STREAM_OBJECT_ID = 51493;
+
+	private static final Set<Integer> ROCK_OBJECT_IDS = ImmutableSet.of(
+			ObjectID.ROCKS_51486,
+			ObjectID.ROCKS_51488,
+			ObjectID.ROCKS_51490,
+			ObjectID.ROCKS_51492
+	);
+
+	private static final Set<Integer> VEIN_OBJECT_IDS = ImmutableSet.of(
+			ObjectID.CALCIFIED_ROCKS,
+			ObjectID.CALCIFIED_ROCKS_51487,
+			ObjectID.CALCIFIED_ROCKS_51489,
+			ObjectID.CALCIFIED_ROCKS_51491
+	);
 
 	@Inject
-	private ClientThread clientThread;
+	private Client client;
 
 	@Inject
 	private CamTorumMiningConfig config;
@@ -60,22 +74,6 @@ public class CamTorumMiningPlugin extends Plugin
 	@Getter
 	private final Map<WorldPoint, TileObject> rocks = new HashMap<>();
 
-	private static final Set<Integer> ROCK_OBJECT_IDS = ImmutableSet.of(
-		ObjectID.ROCKS_51486,
-		ObjectID.ROCKS_51488,
-		ObjectID.ROCKS_51490,
-		ObjectID.ROCKS_51492
-	);
-
-	private static final Set<Integer> VEIN_OBJECT_IDS = ImmutableSet.of(
-		ObjectID.CALCIFIED_ROCKS,
-		ObjectID.CALCIFIED_ROCKS_51487,
-		ObjectID.CALCIFIED_ROCKS_51489,
-		ObjectID.CALCIFIED_ROCKS_51491
-	);
-
-	private static final int STREAM_OBJECT_ID = 51493;
-
 	private boolean inCamTorumMiningArea;
 
 	private int lastNotificationTick;
@@ -84,14 +82,6 @@ public class CamTorumMiningPlugin extends Plugin
 	protected void startUp() throws Exception
 	{
 		overlayManager.add(overlay);
-
-		if (client.getGameState() == GameState.LOGGED_IN)
-		{
-			clientThread.invokeLater(() ->
-			{
-				inCamTorumMiningArea = client.getLocalPlayer().getWorldLocation().getRegionID() == CAM_TORUM_REGION;
-			});
-		}
 	}
 
 	@Override
@@ -107,20 +97,30 @@ public class CamTorumMiningPlugin extends Plugin
 	@Subscribe
 	public void onGameStateChanged(GameStateChanged event)
 	{
-		switch (event.getGameState())
+		GameState gameState = event.getGameState();
+		if (gameState == GameState.LOADING)
 		{
-			case LOADING:
-			case LOGIN_SCREEN:
-			case HOPPING:
-			{
-				streams.clear();
-				veins.clear();
-				rocks.clear();
-				inCamTorumMiningArea = client.getLocalPlayer().getWorldLocation().getRegionID() == CAM_TORUM_REGION;
-				lastNotificationTick = -100; // negative value so instant logging in on water will still notify
-				break;
-			}
+			streams.clear();
+			veins.clear();
+			rocks.clear();
+			inCamTorumMiningArea = checkInCamTorumMiningArea();;
+			lastNotificationTick = -100; // Negative value so instant logging in on water will still notify
 		}
+		else if (event.getGameState() == GameState.LOGIN_SCREEN)
+		{
+			inCamTorumMiningArea = false;
+		}
+	}
+
+	private boolean checkInCamTorumMiningArea()
+	{
+		GameState gameState = client.getGameState();
+		if (gameState != GameState.LOGGED_IN && gameState != GameState.LOADING)
+		{
+			return false;
+		}
+
+		return client.getLocalPlayer().getWorldLocation().getRegionID() == CAM_TORUM_REGION;
 	}
 
 	@Subscribe
@@ -231,7 +231,7 @@ public class CamTorumMiningPlugin extends Plugin
 	private boolean isPlayerMiningNotifiedRock()
 	{
 		int ticksSinceNotified = client.getTickCount() - lastNotificationTick;
-		if (ticksSinceNotified < 52)
+		if (ticksSinceNotified < STREAM_DURATION_TICKS)
 		{
 			// Streams last for about 45 or 50 game ticks
 			return true;
