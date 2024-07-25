@@ -15,6 +15,7 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
+import org.apache.commons.lang3.ArrayUtils;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -74,52 +75,40 @@ public class CamTorumMiningPlugin extends Plugin
 	@Getter
 	private final Map<WorldPoint, TileObject> rocks = new HashMap<>();
 
-	private boolean inCamTorumMiningArea;
-
 	private int lastNotificationTick;
 
 	@Override
-	protected void startUp() throws Exception
+	protected void startUp()
 	{
 		overlayManager.add(overlay);
 	}
 
 	@Override
-	protected void shutDown() throws Exception
+	protected void shutDown()
 	{
 		overlayManager.remove(overlay);
 		streams.clear();
 		veins.clear();
 		rocks.clear();
-		inCamTorumMiningArea = false;
 	}
 
 	@Subscribe
 	public void onGameStateChanged(GameStateChanged event)
 	{
-		GameState gameState = event.getGameState();
-		if (gameState == GameState.LOADING)
+		GameState gamestate = event.getGameState();
+		if (gamestate != GameState.LOGIN_SCREEN && gamestate != GameState.HOPPING && gamestate != GameState.LOADING)
 		{
-			streams.clear();
-			veins.clear();
-			rocks.clear();
-			inCamTorumMiningArea = checkInCamTorumMiningArea();;
-			lastNotificationTick = -100; // Negative value so instant logging in on water will still notify
+			return;
 		}
-		else if (event.getGameState() == GameState.LOGIN_SCREEN)
-		{
-			inCamTorumMiningArea = false;
-		}
+
+		streams.clear();
+		veins.clear();
+		rocks.clear();
+		lastNotificationTick = -100; // Negative value so instant logging in on water will still notify
 	}
 
-	private boolean checkInCamTorumMiningArea()
+	public boolean isInCamTorumMiningArea()
 	{
-		GameState gameState = client.getGameState();
-		if (gameState != GameState.LOGGED_IN && gameState != GameState.LOADING)
-		{
-			return false;
-		}
-
 		return client.getLocalPlayer().getWorldLocation().getRegionID() == CAM_TORUM_REGION;
 	}
 
@@ -181,7 +170,7 @@ public class CamTorumMiningPlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
-		if (!inCamTorumMiningArea || streams.isEmpty() || !config.notifyWater())
+		if (streams.isEmpty() || !config.notifyWater())
 		{
 			return;
 		}
@@ -225,6 +214,7 @@ public class CamTorumMiningPlugin extends Plugin
 				return true;
 			}
 		}
+
 		return false;
 	}
 
@@ -252,11 +242,6 @@ public class CamTorumMiningPlugin extends Plugin
 
 	private void swapRockMenuEntries(MenuEntryAdded event)
 	{
-		if (!isInCamTorumMiningArea())
-		{
-			return;
-		}
-
 		String target = event.getTarget();
         if (!target.contains("Rocks"))
 		{

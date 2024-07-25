@@ -39,6 +39,11 @@ public class CamTorumMiningOverlay extends Overlay
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{
+		if (!plugin.isInCamTorumMiningArea())
+		{
+			return null;
+		}
+
 		Player player = client.getLocalPlayer();
 
 		renderStreams(graphics, player);
